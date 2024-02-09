@@ -24,9 +24,12 @@ class Firework {
   level: number;
   currentLocal: Coordinate;
   lastLocal: Coordinate;
+  totalDistance: number;
+  // finishedDistance:number;
   speed: number;
   acceleration: number;
   brightness: number;
+  decayRate: number;
   targetRadius: number;
   hue: number;
 
@@ -44,43 +47,52 @@ class Firework {
       sin: (end.y - start.y) / Math.hypot(end.x - start.x, end.y - start.y),
       cos: (end.x - start.x) / Math.hypot(end.x - start.x, end.y - start.y),
     };
-
+    this.totalDistance = distance(this.end, this.start);
     this.currentLocal = { ...this.start };
     this.lastLocal = { ...this.start };
     this.level = level;
     // px/s
-    this.speed = parentSpeed ? parentSpeed : (1 + 3 * this.level) / 60;
-    this.acceleration = 1.25;
+    this.speed = (parentSpeed ? parentSpeed : 4) * 45 * this.level;
+    // px/s*s
+    this.acceleration = -0.75;
 
     this.brightness = random(60, 70);
+    // /s
+    this.decayRate = random(30, 60);
     this.targetRadius = 1;
     this.hue = parentHue ? parentHue : random(0, 360);
     this.log("新轨迹");
   }
+
+  public get finishedDistance(): number {
+    return distance(this.currentLocal, this.start);
+  }
+
   log(name: string) {
-    return;
+    // return;
     console.log({
       name,
       ...this,
     });
   }
-  update() {
+  // s
+  update(deltaTime: number = 0.016) {
     this.lastLocal = { ...this.currentLocal };
     // 移动烟花向目标点
-    this.currentLocal.x = this.lastLocal.x + this.angle.cos * this.speed;
-    this.currentLocal.y = this.lastLocal.y + this.angle.sin * this.speed;
+    this.currentLocal.x =
+      this.lastLocal.x + this.angle.cos * this.speed * deltaTime;
+    this.currentLocal.y =
+      this.lastLocal.y +
+      this.angle.sin * this.speed * deltaTime -
+      10 * deltaTime * deltaTime;
 
-    this.speed *= this.acceleration;
+    this.speed *= 1 + this.acceleration * deltaTime;
     // 减小加速度并使烟花亮度降低
-    this.acceleration -= 0.003;
-    this.brightness -= 0.05;
+    // this.acceleration -= 0.0001;
+    this.brightness -= this.decayRate * deltaTime;
 
     // 当烟花接近目标点且仍有亮度，创建爆炸效果
-    if (
-      distance(this.currentLocal, this.start) >
-        distance(this.end, this.start) &&
-      this.brightness >= 0
-    ) {
+    if (this.finishedDistance >= this.totalDistance && this.brightness >= 0) {
       this.log("已到达");
       if (this.level > 1) {
         this.createFireworkExplosion();
@@ -96,7 +108,6 @@ class Firework {
   createFireworkExplosion() {
     const hue = random(0, 360);
     const radius = 40 * this.level;
-    // const childFireworkNum = 50 - 5 * this.level;
     for (let r = 0; r < radius; r = r + 50 - this.level * 11) {
       const rNum = r / 10;
       for (let i = 0; i < rNum; ++i) {
@@ -146,29 +157,28 @@ class Firework {
       ctx.lineWidth = lineWidth;
       ctx.stroke();
     };
-    if (distance(this.currentLocal, this.start) <= 5) {
+    if (this.finishedDistance <= 5) {
       drawCircle(
         this.currentLocal,
         2,
         `hsl(${this.hue}deg, 100%, ${this.brightness}%)`
       );
     }
+    // 已走距离
     // drawLine(this.start, this.end, "rgba(255,255,255,0.1)", 20);
+    // 总距离
+    // drawLine(this.start, this.currentLocal, "rgba(0,0,255,0.1)", 10);
     drawLine(
       this.lastLocal,
-      this.currentLocal,
+      this.finishedDistance > this.totalDistance ? this.end : this.currentLocal,
       `hsl(${this.hue}deg, 100%, ${this.brightness}%)`,
-      1 +
-        ((distance(this.currentLocal, this.start) /
-          distance(this.end, this.start)) *
-          distance(this.currentLocal, this.start)) /
-          distance(this.end, this.start)
+      1 + distance(this.lastLocal, this.start) / this.totalDistance
     );
 
-    if (distance(this.end, this.currentLocal) <= 5) {
+    if (Math.abs(this.totalDistance - this.finishedDistance) <= 3) {
       drawCircle(
         this.currentLocal,
-        2,
+        this.level > 1 ? 2 : 1,
         `hsl(${this.hue}deg, 100%, ${this.brightness}%)`
       );
     }
@@ -194,7 +204,7 @@ function animate(timestamp: number) {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
     fireworks.forEach((firework) => {
-      firework.update();
+      firework.update(deltaTime / 1000);
       firework.draw();
     });
   }
